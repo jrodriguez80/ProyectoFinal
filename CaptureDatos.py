@@ -5,7 +5,7 @@ import time
 
 # Configuracion de la direction y del puerto para la communication
 HOST = 'localhost'
-PORT = 2500
+PORT = 9999
 
 #Generar formularios en formatos json
 

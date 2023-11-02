@@ -4,7 +4,7 @@ import threading
 
 # Configuracion de la direction y del puerto para la communication
 HOST = 'localhost'
-PORT = 2500
+PORT = 9999
 
 # Función para manejar la comunicación con un cliente individual
 def handle_client(client_socket):
