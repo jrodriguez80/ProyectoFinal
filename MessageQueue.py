@@ -1,31 +1,38 @@
-import socket
-import threading
+import pika
 
+class MessageQueue:
+    def __init__(self, host='localhost'):
+        self.host = host
+        self.connection = None
+        self.channel = None
 
-# Configuracion de la direction y del puerto para la communication
-HOST = 'localhost'
-PORT = 9999
+    def connect(self):
+        try:
+            # Establecer una conexion con el servidor rabbitMQ
+            self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.host))
+            # Crear un canal de comunicacion
+            self.channel = self.connection.channel()
+            return True
+        except Exception as e:
+            print(f"Error al conectar a RabbitMQ: {str(e)}")
+            return False
 
-# Función para manejar la comunicación con un cliente individual
-def handle_client(client_socket):
-    print(f"Conectado por {client_socket.getpeername()}")
-    
-    while True:
-        data = client_socket.recv(1024)
-        if not data:
-            break
-        print(f"Mensaje recibido: {data.decode()}")
-    
-    client_socket.close()
+    def declare_queue(self, queue_name):
+        # Declarar una cola en RabbitMQ
+        self.channel.queue_declare(queue=queue_name)
 
-# Crear un socket para escuchar conexiones entrantes
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-    server_socket.bind((HOST, PORT))
-    server_socket.listen()
+    def publish_message(self, queue_name, message):
+        # Publicar un mensaje en la cola especificada
+        self.channel.basic_publish(exchange='', routing_key=queue_name, body=message)
 
-    print(f"Escuchando en {HOST}:{PORT}...")
+    def close_connection(self):
+        if self.connection:
+            # Cerrar la conexion con rqbbitMQ
+            self.connection.close()
 
-    while True:
-        conn, addr = server_socket.accept()
-        client_thread = threading.Thread(target=handle_client, args=(conn,))
-        client_thread.start()
+    def start_consuming(self, queue_name, callback):
+        # Configurar un consumidor para la cola especificada y proporcionar una función de devolución de llamada
+        self.channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+        # Iniciar el consumo de mensajes
+        self.channel.start_consuming()
+

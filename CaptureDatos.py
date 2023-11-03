@@ -1,28 +1,48 @@
-import socket
+import pika
 import json
 import random
-import time
+from MessageQueue import MessageQueue
 
-# Configuracion de la direction y del puerto para la communication
-HOST = 'localhost'
-PORT = 9999
+# Funcion para generar un numero de cedulq unico
+def generar_cedula_unico():
+    return random.randint(100000000, 999999999)
 
-#Generar formularios en formatos json
-
-def generate_form():
-    form_data = {
-        'field1': random.randint(1, 100),
-        'field2': random.choice(['A', 'B', 'C']),
-        'timestamp': time.time()
+# Funcion para generar un formulario del censo
+def generar_formulario():
+    formulario = {
+        "cedula": generar_cedula_unico(),
+        "nombre": "Nombre",
+        "apellido": "Apellido",
+        "direccion": "Dirección",
+        "telefono": "1234567890",
+        "email": "correo@example.com",
+        "edad": random.randint(18, 100),
+        "genero": random.choice(["Masculino", "Femenino"]),
+        "ocupacion": "Ocupación",
+        "nacionalidad": "Nacionalidad"
     }
-    return json.dumps(form_data)
+    return formulario
 
-#Crear un socket pqrq connectarse al servidor de mensages
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-    client_socket.connect((HOST, PORT))
+# Conexion a la cola de mensajes
+message_queue = MessageQueue()
+if message_queue.connect():
+    message_queue.declare_queue('formulario_censo')
 
-# Generar y enviar un formulario a la cola de mensajes
-    form = generate_form()
-    client_socket.sendall(form.encode())
+# Generar y enviar formularios a la cola
+for _ in range(10):  # Generar 10 formularios
+    formulario = generar_formulario()
+    cedula = str(formulario["cedula"])
 
-    print(f"Formulario enviado a la cola de mensajes: {form}")
+    # Validación de cédula (9 cifras)
+    if len(cedula) != 9:
+        print(f"Formulario con cédula inválida: {cedula}")
+    else:
+        # Enviar el formulario en formato JSON a la cola de mensajes
+        message = json.dumps(formulario)
+        message_queue.publish_message('formulario_censo', message)
+        print(f"Formulario con cédula válida enviado a la cola: {cedula}")
+
+# Cerrar la conexion a la cola de mensajes
+message_queue.close_connection()
+
+

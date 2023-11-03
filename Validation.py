@@ -1,17 +1,25 @@
-import socket
+import pika
 import json
+from MessageQueue import MessageQueue
 
-# Configuracion de la direction y del puerto para la communication
-HOST = 'localhost'
-PORT = 9999
+# Función de validación de cédula
+def validar_cedula(cedula):
+    return len(cedula) == 9  # Validar que la cédula tenga 9 cifras
 
-# Crear un socket para conectarse al servidor de mensajes
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-    client_socket.connect((HOST, PORT))
+# Conexión a la cola de mensajes
+message_queue = MessageQueue()
+if message_queue.connect():
+    message_queue.declare_queue('formulario_censo')
 
-    # Escuchar mensajes de la cola de mensajes y realizar validación
-    while True:
-        data = client_socket.recv(1024)
-        if not data:
-            break
-        print(f"Formulario recibido y validado: {data.decode()}")
+# Función para procesar los mensajes de la cola
+def callback(ch, method, properties, body):
+    formulario = json.loads(body)
+    cedula = str(formulario["cedula"])
+
+    if validar_cedula(cedula):
+        print(f"Formulario válido recibido: {cedula}")
+    else:
+        print(f"Formulario con cédula inválida recibido: {cedula}")
+
+# Consumir mensajes de la cola
+message_queue.start_consuming('formulario_censo', callback)
