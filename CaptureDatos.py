@@ -3,14 +3,19 @@ import json
 import random
 from MessageQueue import MessageQueue
 
-# Funcion para generar un numero de cedulq unico
-def generar_cedula_unico():
-    return random.randint(100000000, 999999999)
+# Función para generar una cédula válida (9 cifras) o inválida (6 cifras)
+def generar_cedula():
+    if random.random() < 0.5:
+        # Generar una cédula con 6 cifras
+        return random.randint(100000, 999999)
+    else:
+        # Generar una cédula con 9 cifras
+        return random.randint(100000000, 999999999)
 
 # Funcion para generar un formulario del censo
 def generar_formulario():
     formulario = {
-        "cedula": generar_cedula_unico(),
+        "cedula": generar_cedula(),
         "nombre": "Nombre",
         "apellido": "Apellido",
         "direccion": "Dirección",
@@ -28,21 +33,15 @@ message_queue = MessageQueue()
 if message_queue.connect():
     message_queue.declare_queue('formulario_censo')
 
-# Generar y enviar formularios a la cola
-for _ in range(10):  # Generar 10 formularios
+# Generar y enviar 10 formularios a la cola
+for i in range(10):
     formulario = generar_formulario()
     cedula = str(formulario["cedula"])
+    
+    # Enviar el formulario en formato JSON a la cola de mensajes
+    message = json.dumps(formulario)
+    message_queue.publish_message('formulario_censo', message)
+    print(f"Formulario {i+1} enviado a la cola:\n{message}\n")
 
-    # Validación de cédula (9 cifras)
-    if len(cedula) != 9:
-        print(f"Formulario con cédula inválida: {cedula}")
-    else:
-        # Enviar el formulario en formato JSON a la cola de mensajes
-        message = json.dumps(formulario)
-        message_queue.publish_message('formulario_censo', message)
-        print(f"Formulario con cédula válida enviado a la cola: {cedula}")
-
-# Cerrar la conexion a la cola de mensajes
+# Cerrar la conexión a la cola de mensajes
 message_queue.close_connection()
-
-
