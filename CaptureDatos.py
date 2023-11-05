@@ -1,15 +1,16 @@
 import pika
 import json
 import random
+import os
 from MessageQueue import MessageQueue
 
-# Función para generar una cédula válida (9 cifras) o inválida (6 cifras)
+# Funcion para generar una cedula 
 def generar_cedula():
     if random.random() < 0.5:
-        # Generar una cédula con 6 cifras
+        # Generar una cedula con 6 cifras
         return random.randint(100000, 999999)
     else:
-        # Generar una cédula con 9 cifras
+        # Generar una cedula con 9 cifras
         return random.randint(100000000, 999999999)
 
 # Funcion para generar un formulario del censo
@@ -33,6 +34,10 @@ message_queue = MessageQueue()
 if message_queue.connect():
     message_queue.declare_queue('formulario_censo')
 
+# Crear la carpeta "archivos" si no existe para aue cualquier persona puedq correrlo
+if not os.path.exists("archivos"):
+    os.makedirs("archivos")
+
 # Generar y enviar 10 formularios a la cola
 for i in range(10):
     formulario = generar_formulario()
@@ -43,5 +48,10 @@ for i in range(10):
     message_queue.publish_message('formulario_censo', message)
     print(f"Formulario {i+1} enviado a la cola:\n{message}\n")
 
-# Cerrar la conexión a la cola de mensajes
+    # Guardar el formulario en la carpeta "archivos"
+    file_path = os.path.join("archivos", f"Archivo{i + 1}.json")
+    with open(file_path, "w") as file:
+        file.write(message)
+
+# Cerrar la conexion a la cola de mensajes
 message_queue.close_connection()
