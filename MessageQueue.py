@@ -8,7 +8,7 @@ class MessageQueue:
 
     def connect(self):
         try:
-            # Establecer una conexion con el servidor rabbitMQ
+            # Establecer una conexion con el servidor rqbbitmq
             self.connection = pika.BlockingConnection(pika.ConnectionParameters(host=self.host))
             # Crear un canal de comunicacion
             self.channel = self.connection.channel()
