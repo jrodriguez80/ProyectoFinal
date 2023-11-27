@@ -22,8 +22,20 @@ class MessageQueue:
         self.channel.queue_declare(queue=queue_name)
 
     def publish_message(self, queue_name, message):
-        # Publicar un mensaje en la cola especificada
-        self.channel.basic_publish(exchange='', routing_key=queue_name, body=message)
+        try:
+            if self.connection and self.connection.is_open:
+            # Publicar un mensaje en la cola especificada
+                self.channel.basic_publish(exchange='', routing_key=queue_name, body=message)
+            else:
+                print("Error al publicar mensaje: Conexión cerrada. Intentando reconectar...")
+            self.connect()  # Intentar reconectar
+            if self.connection and self.connection.is_open:
+                self.channel.basic_publish(exchange='', routing_key=queue_name, body=message)
+            else:
+                print("Error al publicar mensaje: No se pudo reconectar.")
+        except Exception as e:
+            print(f"Error al publicar mensaje: {str(e)}")
+
 
     def close_connection(self):
         if self.connection:
@@ -35,4 +47,3 @@ class MessageQueue:
         self.channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
         # Iniciar el consumo de mensajes
         self.channel.start_consuming()
-

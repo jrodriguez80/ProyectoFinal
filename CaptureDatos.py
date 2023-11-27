@@ -2,6 +2,7 @@ import json
 import random
 import os
 import threading
+import concurrent.futures
 from MessageQueue import MessageQueue
 
 # Función para generar una cédula
@@ -29,17 +30,7 @@ def generar_formulario():
     }
     return formulario
 
-# Conexión a la cola de mensajes
-message_queue = MessageQueue()
-if message_queue.connect():
-    message_queue.declare_queue('formulario_censo')
-
-# Crear la carpeta "archivos" si no existe
-if not os.path.exists("archivos"):
-    os.makedirs("archivos")
-
-# Función para enviar un formulario a la cola
-def enviar_formulario():
+def enviar_formulario(message_queue):
     formulario = generar_formulario()
     cedula = str(formulario["cedula"])
 
@@ -53,17 +44,20 @@ def enviar_formulario():
     with open(file_path, "w") as file:
         file.write(json.dumps(formulario))
 
-# Generar y enviar 3 formularios dos veces en hilos separados
-threads = []
-for _ in range(2):
-    for _ in range(3):
-        thread = threading.Thread(target=enviar_formulario)
-        threads.append(thread)
-        thread.start()
+# Conexión a la cola de mensajes
+message_queue = MessageQueue()
+if message_queue.connect():
+    message_queue.declare_queue('formulario_censo')
 
-    # Esperar a que todos los hilos terminen antes de la siguiente iteración
-    for thread in threads:
-        thread.join()
+# Crear la carpeta "archivos" si no existe
+if not os.path.exists("archivos"):
+    os.makedirs("archivos")
+
+# Crear y enviar formularios concurrentemente
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    for _ in range(2):
+        futures = [executor.submit(enviar_formulario, message_queue) for _ in range(3)]
+        concurrent.futures.wait(futures)
 
 # Cerrar la conexión a la cola de mensajes
 message_queue.close_connection()

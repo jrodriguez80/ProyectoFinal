@@ -49,7 +49,7 @@ if __name__ == "__main__":
     if message_queue.connect():
         message_queue.declare_queue('formulario_censo')
 
-        # Crear las carpetas "validos", "duplicados" y "novalidos" si no existenm
+        # Crear las carpetas "validos", "duplicados" y "novalidos" si no existen
         for folder in ["validos", "duplicados", "novalidos"]:
             if not os.path.exists(folder):
                 os.makedirs(folder)
