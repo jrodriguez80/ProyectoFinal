@@ -1,10 +1,6 @@
-# Storage.py
-
-import flask
+import json
 from flask import Flask, request, jsonify
 from threading import Lock, Thread
-import json
-import os
 import logging
 import requests
 import time
@@ -12,15 +8,14 @@ import time
 app = Flask(__name__)
 lock = Lock()
 data_folder = "data"
-replica_folder = "replicas"
 replicas = [1, 2, 3]  # Lista de IDs de las replicas
 
 class StorageNode:
     def __init__(self, node_id, is_leader=False):
         self.node_id = node_id
         self.is_leader = is_leader
-        self.log = []  # Registro de operaciones en disco
-        self.data = {}  # Datos almacenados en el nodo
+        self.log = []
+        self.data = {}
 
     def write_operation(self, operation):
         with lock:
@@ -37,10 +32,10 @@ class StorageNode:
 
     def replicate_operation(self, operation):
         if self.is_leader:
-            # Logicq para replicar la operacion a nodos seguidores
+            # Logica para replicar la operacion a nodos seguidores
             for replica_id in replicas:
                 if replica_id != self.node_id:
-                    # Lógica para enviar la operacion a la replica con ID replica_id
+                    # Logica para enviar la operacion a la replica con ID replica_id
                     self.send_operation_to_replica(replica_id, operation)
 
     def send_operation_to_replica(self, replica_id, operation):
@@ -48,11 +43,7 @@ class StorageNode:
         response = requests.post(replica_address, json=operation)
         logging.info(f"Réplica {replica_id}: {response.json()['message']}")
 
-    def handle_failure(self):
-        logging.warning("HayFallo!")
 
-    def handle_reconnection(self):
-        logging.info("¡Reconexion exitosa!")
 
 if __name__ == "__main__":
     # Configuracion de logging
@@ -62,7 +53,8 @@ if __name__ == "__main__":
     inicializar_almacenamiento()
 
     # Iniciar el hilo de replicacion
-    start_replication()
+    replication_thread = Thread(target=replication_worker)
+    replication_thread.start()
 
     # Ejecutar la aplicacion Flask
     app.run(port=5000)
