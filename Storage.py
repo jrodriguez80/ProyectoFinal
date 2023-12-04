@@ -165,42 +165,7 @@ class StorageNode:
         except requests.RequestException:
             return False
 
-class Follower:
-    def __init__(self, port):
-        self.port = port
-        self.is_ready = False  # Indica si el seguidor está listo para confirmar operaciones
 
-    def run(self):
-        app = Flask(__name__)
-
-        @app.route('/add', methods=['POST'])
-        def add_operation():
-            if not self.is_ready:
-                return jsonify({"message": "Follower not ready"}), 400
-
-            operation = request.json
-            # Lógica para procesar la operación (puedes aplicarla a tus datos locales)
-            print(f"Received operation: {operation}")
-            # Lógica adicional según tus requisitos
-
-            # Confirmar operación al líder
-            return jsonify({"message": "Operation received and confirmed"}), 200
-
-        @app.route('/reconnect', methods=['POST'])
-        def reconnect():
-            # Lógica para manejar la reconexión del líder
-            print("Reconnected to the leader.")
-            self.is_ready = True  # El seguidor está listo para confirmar operaciones
-            return jsonify({"message": "Reconnection successful"}), 200
-
-        @app.route('/sync_state', methods=['POST'])
-        def sync_state():
-            state = request.json.get("state")
-            # Lógica para sincronizar el estado con el líder
-            print(f"Synchronized state with leader: {state}")
-            return jsonify({"message": "State synchronized"}), 200
-
-        app.run(port=self.port)
 
 if __name__ == "__main__":
     # Configuracion de logging
