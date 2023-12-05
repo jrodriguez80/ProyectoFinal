@@ -5,8 +5,9 @@ import requests
 import os
 import time
 import yaml
+import json
 
-# Información de red de los nodos es parametrizable
+# Informacion de red de los nodos es parametrizable
 def load_config(file_path='/home/kali/Desktop/Tarea2/config.yaml'):
     try:
         with open(file_path, 'r') as config_file:
@@ -21,7 +22,7 @@ config = load_config()
 print(config)
 node_ip = config['node_ip']
 node_port = config['node_port']
-replicas = config['replicas']
+replica_ids = config['replicas']
 
 app = Flask(__name__)
 lock = Lock()
@@ -39,7 +40,24 @@ class StorageNode:
     def initialize_storage(self):
         """Inicializar la carpeta de almacenamiento si no existe."""
         if not os.path.exists(data_folder):
+            print(f"El directorio {data_folder} no existe. Creándolo...")
             os.makedirs(data_folder)
+            print("Directorio creado exitosamente.")
+        else:
+            print(f"El directorio {data_folder} ya existe.")
+
+
+    def start_follower(self, replica_id):
+        # Metodo para iniciar un nuevo nodo seguidor
+        follower = Follower(replica_id, port=5000 + replica_id)
+        self.followers.append(follower)
+        Thread(target=follower.run).start()
+
+    def start_followers_dynamically(self):
+        # Metodo para iniciar nodos seguidores dinqmicamente nodos infiftos
+        for replica_id in replica_ids:
+            if replica_id != self.node_id:
+                self.start_follower(replica_id)
 
     def write_operation(self, operation):
         """Realizar operación de escritura en el registro y actualizar datos."""
@@ -55,13 +73,13 @@ class StorageNode:
     def replicate_operation(self, operation):
         """Replicar la operación a nodos seguidores."""
         if self.is_leader:
-            for replica_id in replicas:
+            for replica_id in replica_ids:
                 if replica_id != self.node_id:
                     self.send_operation_to_replica(replica_id, operation)
 
     def send_operation_to_replica(self, replica_id, operation):
         """Enviar la operación a un nodo seguidor específico."""
-        replica_address = f"http://localhost:{5000 + replica_id}/add"
+        replica_address = f"http://{node_ip}:{5000 + replica_id}/add"
         response = requests.post(replica_address, json=operation)
         logging.info(f"Replica {replica_id}: {response.json().get('message', 'Error in response')}")
 
@@ -129,10 +147,14 @@ class StorageNode:
 
     def replication_worker(self):
         while True:
-            time.sleep(5)  # Simular el tiempo entre las operaciones de replicación
-            next_operation = self.get_next_operation()
-            if next_operation:
-                self.replicate_operation(next_operation)
+            try:
+
+                time.sleep(5)  # Simular el tiempo entre las operaciones de replicacion
+                next_operation = self.get_next_operation()
+                if next_operation:
+                    self.replicate_operation(next_operation)
+            except Exception as e:
+                logging.error(f"Error durante la replicación: {str(e)}")
 
     def get_next_operation(self):
         with lock:
@@ -163,6 +185,10 @@ class StorageNode:
             return response.status_code == 200
         except requests.RequestException:
             return False
+    
+    def run_flask_app(self):
+        app.run(port=node_port)
+
 
 @app.route('/')
 def hello():
@@ -171,16 +197,10 @@ def hello():
 @app.route('/guardar_formulario', methods=['POST'])
 def guardar_formulario():
     try:
-        formulario = request.json
+        formulario = request.get_json()
         cedula = formulario.get("cedula")
-        file_path = os.path.join(data_folder, f"formulario_{cedula}.json")
-
-        with open(file_path, 'w') as file:
-            json.dump(formulario, file)
-
-        logging.info(f"Formulario guardado en: {file_path}")
+        storage_node.write_operation({"type": "add", "id": cedula, "form_data": formulario})
         return jsonify({"message": "Formulario guardado correctamente"}), 200
-
     except Exception as e:
         logging.error(f"Error al procesar el formulario: {str(e)}")
         return jsonify({"message": "Error al procesar el formulario"}), 500
@@ -188,7 +208,7 @@ def guardar_formulario():
 @app.route('/get_all_forms', methods=['GET'])
 def get_all_forms():
     try:
-        forms = get_all_forms_data()
+        forms = storage_node.get_all_forms_data()
         return jsonify({"forms": forms}), 200
     except Exception as e:
         logging.error(f"Error al obtener formularios: {str(e)}")
@@ -213,7 +233,8 @@ def replace_form(cedula):
     
 
 class Follower:
-    def __init__(self, port):
+    def __init__(self, node_id, port):
+        self.node_id = node_id
         self.port = port
         self.is_ready = False  # Indica si el seguidor está listo para confirmar operaciones
    
@@ -249,6 +270,9 @@ if __name__ == "__main__":
     # Configuracion de logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+    app.run(host=config['node_ip'], port=config['node_port'], threaded=True, processes=1)
+
+
     # Inicializar el sistema de almacenamiento
     storage_node = StorageNode(node_id=1, is_leader=True)
     storage_node.initialize_storage()
@@ -260,6 +284,8 @@ if __name__ == "__main__":
     # Iniciar dinámicamente nodos seguidores
     dynamic_followers_thread = Thread(target=storage_node.start_followers_dynamically)
     dynamic_followers_thread.start()
+
+     #Iniciar flask
     storage_node.run_flask_app()
 
 
