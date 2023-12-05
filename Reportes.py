@@ -1,64 +1,58 @@
-import requests
 import json
+import requests
+from Storage import StorageNode
 
 class ReportesModule:
-    def __init__(self, storage_api_url):
+    def __init__(self, storage_node, storage_api_url):
+        self.storage_node = storage_node
         self.storage_api_url = storage_api_url
 
-    def obtener_porcentaje_mujeres(self):
-        # Obtener datos del modulo de almacenamiento
-        formularios = self.obtener_formularios()
-        
-        # Filtrar formularios para obtener solo mujeres
-        mujeres = [formulario for formulario in formularios if formulario.get("genero") == "Femenino"]
-        
-        # Calcular el porcentaje
-        total_formularios = len(formularios)
-        porcentaje_mujeres = (len(mujeres) / total_formularios) * 100 if total_formularios > 0 else 0
-
-        return porcentaje_mujeres
-
-    def obtener_porcentaje_hombres(self):
-        # Obtener datos del modulo de almacenamiento
-        formularios = self.obtener_formularios()
-        
-        # Filtrar formularios para obtener solo hombres
-        hombres = [formulario for formulario in formularios if formulario.get("genero") == "Masculino"]
-        
-        # Calcular el porcentaje
-        total_formularios = len(formularios)
-        porcentaje_hombres = (len(hombres) / total_formularios) * 100 if total_formularios > 0 else 0
-
-        return porcentaje_hombres
-
-    def obtener_porcentaje_menores_edad(self):
-        # Obtener datos del módulo de almacenamiento
-        formularios = self.obtener_formularios()
-        
-        # Filtrar formularios para obtener solo menores de edad
-        menores_edad = [formulario for formulario in formularios if formulario.get("edad", 0) < 18]
-        
-        # Calcular el porcentaje
-        total_formularios = len(formularios)
-        porcentaje_menores_edad = (len(menores_edad) / total_formularios) * 100 if total_formularios > 0 else 0
-
-        return porcentaje_menores_edad
-
-    def obtener_formularios(self):
+    def _obtener_formularios(self):
         try:
             response = requests.get(f"{self.storage_api_url}/get_all_forms")
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"Error al obtener formularios del modulo de almacenamiento. Código de estado: {response.status_code}")
-                return []
-        except Exception as e:
-            print(f"Error al obtener formularios del modulo de almacenamiento: {str(e)}")
+            response.raise_for_status()
+
+            # Imprime la respuesta del servidor
+            print("Respuesta del servidor:", response.text)
+
+            return response.json()
+        except requests.RequestException as e:
+            print(f"Error al obtener formularios del módulo de almacenamiento: {str(e)}")
             return []
 
+    def _calcular_porcentaje(self, filtro):
+        formularios = self._obtener_formularios()
+
+        # Verificar si la respuesta es una cadena (sin formularios) o un diccionario (con formularios)
+        if not formularios:
+            print("No hay formularios disponibles.")
+            return 0  # O cualquier otro valor predeterminado que desees
+
+        # Si la respuesta es una cadena, conviértela a un diccionario
+        if isinstance(formularios, str):
+            formularios = json.loads(formularios)
+
+        # Ahora, puedes trabajar con la lista de formularios
+        filtrados = [formulario for formulario in formularios.get("forms", []) if filtro(formulario)]
+        total_formularios = len(formularios.get("forms", []))
+        return (len(filtrados) / total_formularios) * 100 if total_formularios > 0 else 0
+
+    def obtener_porcentaje_mujeres(self):
+        return self._calcular_porcentaje(lambda formulario: formulario.get("genero") == "Femenino")
+
+    def obtener_porcentaje_hombres(self):
+        return self._calcular_porcentaje(lambda formulario: formulario.get("genero") == "Masculino")
+
+    def obtener_porcentaje_menores_edad(self):
+        return self._calcular_porcentaje(lambda formulario: formulario.get("edad", 0) < 18)
+
 if __name__ == "__main__":
-    storage_api_url = "http://localhost:5000" 
-    reportes_module = ReportesModule(storage_api_url)
+    storage_api_url = "http://localhost:5000"
+    storage_node = StorageNode(node_id=1, is_leader=True)
+    storage_node.initialize_storage()
+
+    # Inicializar el modulo de reportes con la instancia de StorageNode
+    reportes_module = ReportesModule(storage_node, storage_api_url)
 
     # Obtener y mostrar los resultados de los reportes
     porcentaje_mujeres = reportes_module.obtener_porcentaje_mujeres()

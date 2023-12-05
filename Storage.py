@@ -6,6 +6,7 @@ import os
 import time
 import yaml
 import json
+import uuid
 
 # Informacion de red de los nodos es parametrizable
 def load_config(file_path='/home/kali/Desktop/Tarea2/config.yaml'):
@@ -25,12 +26,18 @@ node_port = config['node_port']
 replica_ids = config['replicas']
 
 app = Flask(__name__)
+# Configuración del sistema de logs
+logging.basicConfig(level=logging.DEBUG)
 lock = Lock()
 data_folder = "data"
 replicas = [1, 2, 3]
+node_id = str(uuid.uuid4())
+
+
+
 
 class StorageNode:
-    def __init__(self, node_id, is_leader=False):
+    def __init__(self, node_id=node_id, node_ip=node_ip, node_port=node_port, is_leader=False):
         self.node_id = node_id
         self.is_leader = is_leader
         self.log = []  # Registro de operaciones
@@ -46,7 +53,6 @@ class StorageNode:
         else:
             print(f"El directorio {data_folder} ya existe.")
 
-
     def start_follower(self, replica_id):
         # Metodo para iniciar un nuevo nodo seguidor
         follower = Follower(replica_id, port=5000 + replica_id)
@@ -54,7 +60,7 @@ class StorageNode:
         Thread(target=follower.run).start()
 
     def start_followers_dynamically(self):
-        # Metodo para iniciar nodos seguidores dinqmicamente nodos infiftos
+        # Metodo para iniciar nodos seguidores dinámicamente
         for replica_id in replica_ids:
             if replica_id != self.node_id:
                 self.start_follower(replica_id)
@@ -66,9 +72,34 @@ class StorageNode:
             operation_type = operation.get("type")
             if operation_type == "add":
                 self.data[str(operation.get("id"))] = operation.get("form_data")
+                self.save_to_file(operation.get("id"), operation.get("form_data"))
             elif operation_type == "delete":
                 del self.data[str(operation.get("id"))]
-            self.replicate_operation(operation)
+            self.delete_from_file(operation.get("id"))
+        self.replicate_operation(operation)
+
+    def save_to_file(self, cedula, form_data):
+        """Guardar datos en el sistema de archivos."""
+        file_path = os.path.join(data_folder, f"{cedula}.json")
+        try:
+            with open(file_path, "w") as file:
+                json.dump(form_data, file)
+            logging.info(f"Datos guardados en el archivo: {file_path}")
+        except Exception as e:
+            logging.error(f"Error al guardar en el archivo {file_path}: {str(e)}")
+
+    def delete_from_file(self, cedula):
+        """Eliminar datos del sistema de archivos."""
+        file_path = os.path.join(data_folder, f"{cedula}.json")
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logging.info(f"Archivo eliminado: {file_path}")
+            else:
+                logging.warning(f"Intento de eliminar archivo inexistente: {file_path}")
+        except Exception as e:
+            logging.error(f"Error al eliminar el archivo {file_path}: {str(e)}")
+
 
     def replicate_operation(self, operation):
         """Replicar la operación a nodos seguidores."""
@@ -85,7 +116,7 @@ class StorageNode:
 
     def handle_failure(self):
         logging.warning("¡Fallo!")
-        # Logica para manejar la caída del nodo líder
+        # Lógica para manejar la caída del nodo líder
         if self.is_leader:
             logging.info("El nodo líder ha fallado. Iniciando proceso de elección de nuevo líder.")
             self.elect_new_leader()
@@ -148,7 +179,6 @@ class StorageNode:
     def replication_worker(self):
         while True:
             try:
-
                 time.sleep(5)  # Simular el tiempo entre las operaciones de replicacion
                 next_operation = self.get_next_operation()
                 if next_operation:
@@ -185,6 +215,10 @@ class StorageNode:
             return response.status_code == 200
         except requests.RequestException:
             return False
+        
+    def get_all_forms_data(self):
+        """Obtener todos los formularios almacenados."""
+        return list(self.data.values())
     
     def run_flask_app(self):
         app.run(port=node_port)
@@ -200,23 +234,27 @@ def guardar_formulario():
         formulario = request.get_json()
         cedula = formulario.get("cedula")
         storage_node.write_operation({"type": "add", "id": cedula, "form_data": formulario})
+        
+        logging.info("Formulario guardado correctamente.")
+        
         return jsonify({"message": "Formulario guardado correctamente"}), 200
     except Exception as e:
         logging.error(f"Error al procesar el formulario: {str(e)}")
         return jsonify({"message": "Error al procesar el formulario"}), 500
 
+
 @app.route('/get_all_forms', methods=['GET'])
 def get_all_forms():
+    storage_node = StorageNode()
     try:
+        
         forms = storage_node.get_all_forms_data()
         return jsonify({"forms": forms}), 200
     except Exception as e:
         logging.error(f"Error al obtener formularios: {str(e)}")
         return jsonify({"message": "Error al obtener formularios"}), 500
 
-def get_all_forms_data():
-    """Obtener todos los formularios almacenados."""
-    return list(StorageNode().data.values()) 
+ 
 
 @app.route('/delete_form/<cedula>', methods=['DELETE'])
 def delete_form(cedula):
@@ -268,13 +306,10 @@ class Follower:
 
 if __name__ == "__main__":
     # Configuracion de logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')    
 
-    app.run(host=config['node_ip'], port=config['node_port'], threaded=True, processes=1)
-
-
-    # Inicializar el sistema de almacenamiento
-    storage_node = StorageNode(node_id=1, is_leader=True)
+    # Crear e inicializar la instancia de StorageNode
+    storage_node = StorageNode(node_id=node_id, node_ip=node_ip, node_port=node_port, is_leader=True)
     storage_node.initialize_storage()
 
     # Iniciar el hilo de replicacion
@@ -285,7 +320,7 @@ if __name__ == "__main__":
     dynamic_followers_thread = Thread(target=storage_node.start_followers_dynamically)
     dynamic_followers_thread.start()
 
-     #Iniciar flask
+    # Iniciar la aplicación Flask con la instancia de StorageNode
     storage_node.run_flask_app()
 
 
