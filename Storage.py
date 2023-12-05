@@ -7,6 +7,9 @@ import time
 import yaml
 import json
 import uuid
+from multiprocessing import Process
+from follower import Follower
+
 
 # Informacion de red de los nodos es parametrizable
 def load_config(file_path='/home/kali/Desktop/Tarea2/config.yaml'):
@@ -221,7 +224,7 @@ class StorageNode:
         return list(self.data.values())
     
     def run_flask_app(self):
-        app.run(port=node_port)
+        app.run(port=self.node_port)
 
 
 @app.route('/')
@@ -270,49 +273,15 @@ def replace_form(cedula):
     return jsonify({"message": "Form replaced successfully"}), 200
     
 
-class Follower:
-    def __init__(self, node_id, port):
-        self.node_id = node_id
-        self.port = port
-        self.is_ready = False  # Indica si el seguidor está listo para confirmar operaciones
-   
-
-        @app.route('/add', methods=['POST'])
-        def add_operation():
-            if not self.is_ready:
-                return jsonify({"message": "Follower not ready"}), 400
-
-            operation = request.json
-            # Lógica para procesar la operación (puedes aplicarla a tus datos locales)
-            print(f"Received operation: {operation}")
-            # Confirmar operación al líder
-            return jsonify({"message": "Operation received and confirmed"}), 200
-
-        @app.route('/reconnect', methods=['POST'])
-        def reconnect():
-            # Lógica para manejar la reconexión del líder
-            print("Reconnected to the leader.")
-            self.is_ready = True  # El seguidor está listo para confirmar operaciones
-            return jsonify({"message": "Reconnection successful"}), 200
-
-        @app.route('/sync_state', methods=['POST'])
-        def sync_state():
-            state = request.json.get("state")
-            # Lógica para sincronizar el estado con el líder
-            print(f"Synchronized state with leader: {state}")
-            return jsonify({"message": "State synchronized"}), 200
-
-        app.run(port=self.port)
-
 if __name__ == "__main__":
-    # Configuracion de logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')    
+     # Configuración de logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Crear e inicializar la instancia de StorageNode
     storage_node = StorageNode(node_id=node_id, node_ip=node_ip, node_port=node_port, is_leader=True)
     storage_node.initialize_storage()
 
-    # Iniciar el hilo de replicacion
+    # Iniciar el hilo de replicación
     replication_thread = Thread(target=storage_node.replication_worker)
     replication_thread.start()
 
@@ -321,6 +290,6 @@ if __name__ == "__main__":
     dynamic_followers_thread.start()
 
     # Iniciar la aplicación Flask con la instancia de StorageNode
-    storage_node.run_flask_app()
+    app.run(host='0.0.0.0', port=5000)
 
 

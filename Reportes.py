@@ -12,7 +12,7 @@ class ReportesModule:
             response = requests.get(f"{self.storage_api_url}/get_all_forms")
             response.raise_for_status()
 
-            # Imprime la respuesta del servidor
+            # Imprimir la respuesta del servidor
             print("Respuesta del servidor:", response.text)
 
             return response.json()
@@ -26,13 +26,13 @@ class ReportesModule:
         # Verificar si la respuesta es una cadena (sin formularios) o un diccionario (con formularios)
         if not formularios:
             print("No hay formularios disponibles.")
-            return 0  # O cualquier otro valor predeterminado que desees
+            return 0  
 
-        # Si la respuesta es una cadena, conviértela a un diccionario
+        # respuesta es una cadena
         if isinstance(formularios, str):
             formularios = json.loads(formularios)
 
-        # Ahora, puedes trabajar con la lista de formularios
+        #  la lista de formularios
         filtrados = [formulario for formulario in formularios.get("forms", []) if filtro(formulario)]
         total_formularios = len(formularios.get("forms", []))
         return (len(filtrados) / total_formularios) * 100 if total_formularios > 0 else 0
