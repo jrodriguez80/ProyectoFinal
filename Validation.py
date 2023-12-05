@@ -33,7 +33,7 @@ class ValidationDeduplicationModule:
     def enviar_a_almacenamiento(self, formulario):
         # Envia el formulario al modulo de almacenamiento a través de la api rest
         try:
-            response = requests.post(f"{self.storage_api_url}/guardar_formulario", json=formulario)
+            response = requests.post(f"http://localhost:5000/guardar_formulario", json=formulario)
             if response.status_code == 200:
                 print("Formulario enviado exitosamente al módulo de almacenamiento.")
             else:
@@ -68,10 +68,13 @@ if __name__ == "__main__":
     if message_queue.connect():
         message_queue.declare_queue('formulario_censo')
 
+
+        logging.info("Verificando y creando carpetas...")
         # Crear las carpetas "validos", "duplicados" y "novalidos" si no existen
         for folder in ["validos", "duplicados", "novalidos"]:
             if not os.path.exists(folder):
                 os.makedirs(folder)
+        logging.info("Creación de carpetas completada.")
 
         # url de la api rest del modulo de qlmqcenamiento
         storage_api_url = "http://localhost:5000"
@@ -83,4 +86,3 @@ if __name__ == "__main__":
         thread = threading.Thread(target=validation_deduplication_module.consumir_mensajes)
         thread.start()
         thread.join()  # Esperar a que el hilo de consumo termine
-
