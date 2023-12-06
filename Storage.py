@@ -7,9 +7,7 @@ import time
 import yaml
 import json
 import uuid
-from multiprocessing import Process
 from follower import Follower
-
 
 # Informacion de red de los nodos es parametrizable
 def load_config(file_path='/home/kali/Desktop/Tarea2/config.yaml'):
@@ -27,25 +25,24 @@ print(config)
 node_ip = config['node_ip']
 node_port = config['node_port']
 replica_ids = config['replicas']
-
+node_mode = config.get('node_mode', 'follower')  # Por defecto, actuará como seguidor
 app = Flask(__name__)
 # Configuración del sistema de logs
 logging.basicConfig(level=logging.DEBUG)
 lock = Lock()
-data_folder = "data"
+data_folder = "/home/kali/Desktop/Tarea2/data"
 replicas = [1, 2, 3]
 node_id = str(uuid.uuid4())
 
-
-
-
 class StorageNode:
-    def __init__(self, node_id=node_id, node_ip=node_ip, node_port=node_port, is_leader=False):
+    def __init__(self, node_id=node_id, node_ip=node_ip, node_port=node_port):
         self.node_id = node_id
-        self.is_leader = is_leader
+        self.is_leader = node_mode == 'leader'
         self.log = []  # Registro de operaciones
         self.data = {}  # Datos almacenados
         self.followers = []  # Nodos seguidores
+        self.node_ip = node_ip
+        self.node_port = node_port
 
     def initialize_storage(self):
         """Inicializar la carpeta de almacenamiento si no existe."""
@@ -57,13 +54,13 @@ class StorageNode:
             print(f"El directorio {data_folder} ya existe.")
 
     def start_follower(self, replica_id):
-        # Metodo para iniciar un nuevo nodo seguidor
+        # Método para iniciar un nuevo nodo seguidor
         follower = Follower(replica_id, port=5000 + replica_id)
         self.followers.append(follower)
         Thread(target=follower.run).start()
 
     def start_followers_dynamically(self):
-        # Metodo para iniciar nodos seguidores dinámicamente
+        # Método para iniciar nodos seguidores dinámicamente
         for replica_id in replica_ids:
             if replica_id != self.node_id:
                 self.start_follower(replica_id)
@@ -74,12 +71,38 @@ class StorageNode:
             self.log.append(operation)
             operation_type = operation.get("type")
             if operation_type == "add":
+                # Almacena el formulario en el nodo líder
                 self.data[str(operation.get("id"))] = operation.get("form_data")
                 self.save_to_file(operation.get("id"), operation.get("form_data"))
+                # Replicar la operación a los nodos seguidores
+                self.replicate_operation(operation)
             elif operation_type == "delete":
                 del self.data[str(operation.get("id"))]
-            self.delete_from_file(operation.get("id"))
-        self.replicate_operation(operation)
+                # Replicar la operación de eliminación a los nodos seguidores
+                self.replicate_operation(operation)
+
+    def replication_worker(self):
+        while True:
+            try:
+                time.sleep(5)  # Simular el tiempo entre las operaciones de replicación
+                next_operation = self.get_next_operation()
+                if next_operation:
+                    print("Iniciando replicación...")
+                    # Esperar a que los seguidores estén listos antes de replicar
+                    for replica_id in replica_ids:
+                        if replica_id != self.node_id:
+                            self.wait_for_follower_ready(replica_id)
+                            print(f"Replicando operación a réplica {replica_id}...")
+                            self.replicate_operation(next_operation, replica_id)
+            except Exception as e:
+                logging.error(f"Error durante la replicación: {str(e)}")
+
+
+    def get_next_operation(self):
+        with lock:
+            if self.log:
+                return self.log.pop(0)  # Obtiene y elimina la primera operación del registro
+        return None
 
     def save_to_file(self, cedula, form_data):
         """Guardar datos en el sistema de archivos."""
@@ -90,32 +113,30 @@ class StorageNode:
             logging.info(f"Datos guardados en el archivo: {file_path}")
         except Exception as e:
             logging.error(f"Error al guardar en el archivo {file_path}: {str(e)}")
+            print(f"Error al guardar en el archivo {file_path}: {str(e)}")
 
-    def delete_from_file(self, cedula):
-        """Eliminar datos del sistema de archivos."""
-        file_path = os.path.join(data_folder, f"{cedula}.json")
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                logging.info(f"Archivo eliminado: {file_path}")
-            else:
-                logging.warning(f"Intento de eliminar archivo inexistente: {file_path}")
-        except Exception as e:
-            logging.error(f"Error al eliminar el archivo {file_path}: {str(e)}")
-
+    def get_all_forms_data(self):
+        """Obtener todos los formularios almacenados en el nodo."""
+        return list(self.data.values())
 
     def replicate_operation(self, operation):
         """Replicar la operación a nodos seguidores."""
         if self.is_leader:
             for replica_id in replica_ids:
                 if replica_id != self.node_id:
+                    self.wait_for_follower_ready(replica_id)
                     self.send_operation_to_replica(replica_id, operation)
 
     def send_operation_to_replica(self, replica_id, operation):
-        """Enviar la operación a un nodo seguidor específico."""
         replica_address = f"http://{node_ip}:{5000 + replica_id}/add"
-        response = requests.post(replica_address, json=operation)
-        logging.info(f"Replica {replica_id}: {response.json().get('message', 'Error in response')}")
+        print(f"Enviando operación a réplica {replica_id}: {operation}")
+        response = requests.post(replica_address, json=operation).json()
+        print(f"Respuesta de réplica {replica_id}: {response}")
+        if response.get('success', False):
+            logging.info(f"Replica {replica_id}: Operación replicada correctamente.")
+        else:
+            logging.warning(f"Replica {replica_id}: Fallo en la replicación. {response.get('message', 'No message')}")
+
 
     def handle_failure(self):
         logging.warning("¡Fallo!")
@@ -123,16 +144,6 @@ class StorageNode:
         if self.is_leader:
             logging.info("El nodo líder ha fallado. Iniciando proceso de elección de nuevo líder.")
             self.elect_new_leader()
-
-    def handle_reconnection(self):
-        logging.info("Reconexión de un nodo seguidor. Se realizará una 'puesta al día'.")
-        # Lógica para sincronizar el estado con el líder
-        self.sync_with_leader()
-
-    def handle_new_follower(self, new_follower_id):
-        logging.info(f"Nodo seguidor agregado: Nodo {new_follower_id}")
-        # Lógica para sincronizar el nuevo nodo seguidor con el líder
-        self.sync_with_new_follower(new_follower_id)
 
     def elect_new_leader(self):
         # Lógica para elegir un nuevo líder, el nodo con el ID más alto como líder
@@ -154,78 +165,19 @@ class StorageNode:
                 else:
                     logging.warning(f"Réplica {replica_id}: Fallo en la reconexión.")
 
-    def sync_with_leader(self):
-        # Lógica para obtener el estado actual del líder y actualizar el estado local
-        leader_address = f"http://localhost:{5000}/get_state"
-        response = requests.get(leader_address)
-        if response.status_code == 200:
-            leader_state = response.json().get("state")
-            self.sync_state_with_leader(leader_state)
-            logging.info("Sincronización con el líder exitosa.")
-        else:
-            logging.warning("Fallo al obtener el estado del líder.")
-
-    def sync_state_with_leader(self, leader_state):
-        # Lógica para sincronizar el estado local con el estado del líder
-        self.data = leader_state.get("data", {})
-        self.log = leader_state.get("log", [])
-
-    def sync_with_new_follower(self, new_follower_id):
-        # Lógica para enviar el estado actual al nuevo nodo seguidor
-        new_follower_address = f"http://localhost:{5000 + new_follower_id}/sync_state"
-        response = requests.post(new_follower_address, json={"state": {"data": self.data, "log": self.log}})
-        if response.status_code == 200:
-            logging.info(f"Sincronización con el nuevo seguidor {new_follower_id} exitosa.")
-        else:
-            logging.warning(f"Fallo al sincronizar con el nuevo seguidor {new_follower_id}.")
-
-    def replication_worker(self):
+    def wait_for_follower_ready(self, replica_id):
+        follower_address = f"http://127.0.0.1:{5000 + replica_id}/check_ready"
         while True:
             try:
-                time.sleep(5)  # Simular el tiempo entre las operaciones de replicacion
-                next_operation = self.get_next_operation()
-                if next_operation:
-                    self.replicate_operation(next_operation)
-            except Exception as e:
-                logging.error(f"Error durante la replicación: {str(e)}")
+                response = requests.get(follower_address)
+                if response.status_code == 200 and response.json().get('ready', False):
+                    break
+            except requests.RequestException:
+                pass
+            time.sleep(1)
 
-    def get_next_operation(self):
-        with lock:
-            if self.log:
-                return self.log.pop(0)  # Obtiene y elimina la primera operación del registro
-        return None
-
-    def check_leader_status(self):
-        while True:
-            time.sleep(5)
-            if not self.is_leader:
-                continue
-
-            # Verificar si el líder está activo
-            if not self.is_leader_alive():
-                logging.warning("El nodo líder ha fallado. Iniciando proceso de elección de nuevo líder.")
-                self.elect_new_leader()
-
-    def is_leader_alive(self):
-        if not self.is_leader:
-            # No se aplica si no eres el líder
-            return True
-
-        # Verificar la salud del líder haciendo una solicitud HTTP a una ruta específica
-        leader_health_check_url = f"http://localhost:{5000}/health_check"
-        try:
-            response = requests.get(leader_health_check_url, timeout=2)
-            return response.status_code == 200
-        except requests.RequestException:
-            return False
-        
-    def get_all_forms_data(self):
-        """Obtener todos los formularios almacenados."""
-        return list(self.data.values())
-    
     def run_flask_app(self):
         app.run(port=self.node_port)
-
 
 @app.route('/')
 def hello():
@@ -245,19 +197,15 @@ def guardar_formulario():
         logging.error(f"Error al procesar el formulario: {str(e)}")
         return jsonify({"message": "Error al procesar el formulario"}), 500
 
-
 @app.route('/get_all_forms', methods=['GET'])
 def get_all_forms():
     storage_node = StorageNode()
     try:
-        
         forms = storage_node.get_all_forms_data()
         return jsonify({"forms": forms}), 200
     except Exception as e:
         logging.error(f"Error al obtener formularios: {str(e)}")
         return jsonify({"message": "Error al obtener formularios"}), 500
-
- 
 
 @app.route('/delete_form/<cedula>', methods=['DELETE'])
 def delete_form(cedula):
@@ -271,14 +219,35 @@ def replace_form(cedula):
     form_data = request.json
     storage_node.write_operation({"type": "replace", "id": cedula, "form_data": form_data})
     return jsonify({"message": "Form replaced successfully"}), 200
-    
+
+@app.route('/check_ready', methods=['GET'])
+def check_ready():
+    return jsonify({"status": "ready"}), 200
+
+@app.route('/get_replica_status', methods=['GET'])
+def get_replica_status():
+    replica_statuses = {}
+    for replica_id in replica_ids:
+        if replica_id != self.node_id:
+            replica_address = f"http://localhost:{5000 + replica_id}/get_status"
+            try:
+                response = requests.get(replica_address)
+                if response.status_code == 200:
+                    replica_status = response.json()
+                    replica_statuses[f"Replica {replica_id}"] = replica_status
+                else:
+                    replica_statuses[f"Replica {replica_id}"] = {"status": "Error", "message": f"HTTP {response.status_code}"}
+            except requests.RequestException as e:
+                replica_statuses[f"Replica {replica_id}"] = {"status": "Error", "message": str(e)}
+    return jsonify(replica_statuses), 200
+
 
 if __name__ == "__main__":
-     # Configuración de logging
+    # Configuración de logging
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     # Crear e inicializar la instancia de StorageNode
-    storage_node = StorageNode(node_id=node_id, node_ip=node_ip, node_port=node_port, is_leader=True)
+    storage_node = StorageNode(node_id=node_id, node_ip=node_ip, node_port=node_port)
     storage_node.initialize_storage()
 
     # Iniciar el hilo de replicación
@@ -290,6 +259,4 @@ if __name__ == "__main__":
     dynamic_followers_thread.start()
 
     # Iniciar la aplicación Flask con la instancia de StorageNode
-    app.run(host='0.0.0.0', port=5000)
-
-
+    storage_node.run_flask_app()

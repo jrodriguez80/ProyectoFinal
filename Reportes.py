@@ -48,7 +48,7 @@ class ReportesModule:
 
 if __name__ == "__main__":
     storage_api_url = "http://localhost:5000"
-    storage_node = StorageNode(node_id=1, is_leader=True)
+    storage_node = StorageNode(node_id=1)
     storage_node.initialize_storage()
 
     # Inicializar el modulo de reportes con la instancia de StorageNode

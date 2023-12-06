@@ -40,8 +40,6 @@ class ValidationDeduplicationModule:
                 print(f"Error al enviar formulario al módulo de almacenamiento. Código de estado: {response.status_code}")
         except Exception as e:
             print(f"Error al enviar formulario al módulo de almacenamiento: {str(e)}")
-            print(f"Detalles de la excepción: {repr(e)}")
-
 
     def callback(self, ch, method, properties, body):
         # Función de callback para procesar mensajes recibidos de la cola de mensajes
