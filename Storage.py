@@ -68,6 +68,7 @@ class StorageNode:
     def write_operation(self, operation):
         """Realizar operación de escritura en el registro y actualizar datos."""
         with lock:
+            print(f"Nodo {self.node_id} - Nueva operación: {operation}")
             self.log.append(operation)
             operation_type = operation.get("type")
             if operation_type == "add":
@@ -81,21 +82,24 @@ class StorageNode:
                 # Replicar la operación de eliminación a los nodos seguidores
                 self.replicate_operation(operation)
 
+
     def replication_worker(self):
         while True:
             try:
                 time.sleep(5)  # Simular el tiempo entre las operaciones de replicación
                 next_operation = self.get_next_operation()
                 if next_operation:
-                    print("Iniciando replicación...")
+                    print(f"Nodo {self.node_id} - Iniciando replicación de operación: {next_operation}")
                     # Esperar a que los seguidores estén listos antes de replicar
                     for replica_id in replica_ids:
                         if replica_id != self.node_id:
                             self.wait_for_follower_ready(replica_id)
-                            print(f"Replicando operación a réplica {replica_id}...")
+                            print(f"Nodo {self.node_id} - Replicando operación a réplica {replica_id}: {next_operation}")
                             self.replicate_operation(next_operation, replica_id)
             except Exception as e:
                 logging.error(f"Error durante la replicación: {str(e)}")
+
+
 
 
     def get_next_operation(self):
@@ -122,20 +126,27 @@ class StorageNode:
     def replicate_operation(self, operation):
         """Replicar la operación a nodos seguidores."""
         if self.is_leader:
+            replica_ids = [...]  # lista correcta de IDs de réplica
+
             for replica_id in replica_ids:
                 if replica_id != self.node_id:
                     self.wait_for_follower_ready(replica_id)
+                    print(f"Nodo {self.node_id} - Replicando operación a réplica {replica_id}: {operation}")
                     self.send_operation_to_replica(replica_id, operation)
+                    print(f"Nodo {self.node_id} - Replicación completada a réplica {replica_id}")
+
+
 
     def send_operation_to_replica(self, replica_id, operation):
         replica_address = f"http://{node_ip}:{5000 + replica_id}/add"
-        print(f"Enviando operación a réplica {replica_id}: {operation}")
+        print(f"Nodo {self.node_id} - Enviando operación a réplica {replica_id}: {operation}")
         response = requests.post(replica_address, json=operation).json()
-        print(f"Respuesta de réplica {replica_id}: {response}")
+        print(f"Nodo {self.node_id} - Respuesta de réplica {replica_id}: {response}")
         if response.get('success', False):
             logging.info(f"Replica {replica_id}: Operación replicada correctamente.")
         else:
             logging.warning(f"Replica {replica_id}: Fallo en la replicación. {response.get('message', 'No message')}")
+
 
 
     def handle_failure(self):
