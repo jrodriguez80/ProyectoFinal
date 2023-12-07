@@ -5,6 +5,9 @@ import threading
 import concurrent.futures
 from MessageQueue import MessageQueue
 
+
+
+
 # Función para generar una cédula
 def generar_cedula():
     if random.random() < 0.5:
